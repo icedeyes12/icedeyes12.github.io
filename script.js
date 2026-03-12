@@ -1,367 +1,286 @@
+// ====== LUCIDE ICONS ======
+document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    initTerminal();
+    initScrollProgress();
+    initIntersectionObserver();
+    initParallax();
+});
+
 // ====== LIVE TERMINAL ANIMATION ======
-const TerminalAnimation = {
-    phases: ['cd', 'cd-pause', 'cd-execute', 'python', 'python-pause', 'loading', 'processing', 'error', 'reset'],
-    currentPhase: 0,
-    typedCmd: '',
-    dots: 1,
-    processLines: [],
-    processOutput: [
-        'Loading module: yuzu.core.engine',
-        'Loading module: yuzu.memory.postgres_store',
-        'Loading module: yuzu.api.routes',
-        'Initializing database connection...',
-        'Mounting API routers...',
-        'Starting event loop...'
-    ],
-    container: null,
-    cursorVisible: true,
-    typeInterval: null,
-    dotInterval: null,
-    processInterval: null,
-    phaseTimeout: null,
+const terminalPhases = ['cd', 'cd-pause', 'cd-execute', 'python', 'python-pause', 'loading', 'processing', 'error', 'reset'];
+const terminalOutput = [
+    "Loading module: yuzu.core.engine",
+    "Loading module: yuzu.memory.postgres_store",
+    "Loading module: yuzu.api.routes",
+    "Initializing database connection...",
+    "Mounting API routers...",
+    "Starting event loop..."
+];
 
-    init() {
-        this.container = document.getElementById('terminal');
-        if (!this.container) return;
+let currentPhase = 0;
+let typedCmd = '';
+let dots = 1;
+let cursorVisible = true;
+let processLines = [];
+let terminalInterval = null;
 
-        // Start cursor blink
-        setInterval(() => {
-            this.cursorVisible = !this.cursorVisible;
-            this.render();
-        }, 530);
-
-        this.runPhase();
-    },
-
-    runPhase() {
-        const phase = this.phases[this.currentPhase];
-        const typeSpeed = 120;
-
-        clearTimeout(this.phaseTimeout);
-        clearInterval(this.typeInterval);
-        clearInterval(this.dotInterval);
-        clearInterval(this.processInterval);
-
-        switch (phase) {
-            case 'cd':
-                this.typedCmd = '';
-                const cdCmd = 'cd workspace/yuzu-v2';
-                let cdI = 0;
-                this.typeInterval = setInterval(() => {
-                    if (cdI <= cdCmd.length) {
-                        this.typedCmd = cdCmd.slice(0, cdI);
-                        cdI++;
-                        this.render();
-                    } else {
-                        clearInterval(this.typeInterval);
-                        this.phaseTimeout = setTimeout(() => this.nextPhase(), 600);
-                    }
-                }, typeSpeed);
-                break;
-
-            case 'cd-pause':
-                this.typedCmd = 'cd workspace/yuzu-v2';
-                this.render();
-                this.phaseTimeout = setTimeout(() => this.nextPhase(), 900);
-                break;
-
-            case 'cd-execute':
-                this.typedCmd = '';
-                this.render();
-                this.phaseTimeout = setTimeout(() => this.nextPhase(), 800);
-                break;
-
-            case 'python':
-                this.typedCmd = '';
-                const pyCmd = 'python main.py';
-                let pyI = 0;
-                this.typeInterval = setInterval(() => {
-                    if (pyI <= pyCmd.length) {
-                        this.typedCmd = pyCmd.slice(0, pyI);
-                        pyI++;
-                        this.render();
-                    } else {
-                        clearInterval(this.typeInterval);
-                        this.phaseTimeout = setTimeout(() => this.nextPhase(), 700);
-                    }
-                }, typeSpeed);
-                break;
-
-            case 'python-pause':
-                this.typedCmd = 'python main.py';
-                this.render();
-                this.phaseTimeout = setTimeout(() => this.nextPhase(), 900);
-                break;
-
-            case 'loading':
-                this.typedCmd = 'python main.py';
-                this.dots = 1;
-                this.render();
-                this.dotInterval = setInterval(() => {
-                    this.dots = this.dots >= 3 ? 3 : this.dots + 1;
-                    this.render();
-                }, 400);
-                this.phaseTimeout = setTimeout(() => {
-                    clearInterval(this.dotInterval);
-                    this.nextPhase();
-                }, 1400);
-                break;
-
-            case 'processing':
-                this.typedCmd = 'python main.py';
-                this.dots = 3;
-                this.processLines = [];
-                this.render();
-                let lineIndex = 0;
-                this.processInterval = setInterval(() => {
-                    if (lineIndex < this.processOutput.length) {
-                        this.processLines.push(this.processOutput[lineIndex]);
-                        lineIndex++;
-                        this.render();
-                    } else {
-                        clearInterval(this.processInterval);
-                        this.phaseTimeout = setTimeout(() => this.nextPhase(), 600);
-                    }
-                }, 180);
-                break;
-
-            case 'error':
-                this.typedCmd = 'python main.py';
-                this.processLines = [...this.processOutput];
-                this.render();
-                this.phaseTimeout = setTimeout(() => this.nextPhase(), 2500);
-                break;
-
-            case 'reset':
-                this.typedCmd = '';
-                this.processLines = [];
-                this.render();
-                this.phaseTimeout = setTimeout(() => this.nextPhase(), 1200);
-                break;
+function initTerminal() {
+    const cursorEl = document.getElementById('terminalCursor');
+    
+    // Blink cursor
+    setInterval(() => {
+        cursorVisible = !cursorVisible;
+        if (cursorEl) {
+            cursorEl.style.opacity = cursorVisible ? '1' : '0';
         }
-    },
+    }, 530);
+    
+    runTerminalPhase();
+}
 
-    nextPhase() {
-        this.currentPhase = (this.currentPhase + 1) % this.phases.length;
-        this.runPhase();
-    },
-
-    render() {
-        if (!this.container) return;
-        const phase = this.phases[this.currentPhase];
-        let html = '';
-
-        const cursor = `<span class="terminal-cursor" style="opacity: ${this.cursorVisible ? 1 : 0}">_</span>`;
-
-        switch (phase) {
-            case 'cd':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">~</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">${this.typedCmd}</span>${cursor}</div>
-                `;
-                break;
-
-            case 'cd-pause':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">~</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">cd workspace/yuzu-v2</span>${cursor}</div>
-                `;
-                break;
-
-            case 'cd-execute':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span>${cursor}</div>
-                `;
-                break;
-
-            case 'python':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">${this.typedCmd}</span>${cursor}</div>
-                `;
-                break;
-
-            case 'python-pause':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">python main.py</span>${cursor}</div>
-                `;
-                break;
-
-            case 'loading':
-                const dotStr = '.'.repeat(this.dots) + ' '.repeat(3 - this.dots);
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">python main.py</span></div>
-                    <div class="terminal-dots">starting${dotStr}</div>
-                `;
-                break;
-
-            case 'processing':
-                const linesHtml = this.processLines.map(line => 
-                    `<div class="terminal-output-line"><span class="branch">├─</span> ${line}</div>`
-                ).join('');
-                const pending = this.processLines.length < this.processOutput.length ? 
-                    '<div class="terminal-output-line"><span class="branch">└─</span> ...</div>' : '';
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">python main.py</span></div>
-                    <div class="terminal-dots">starting...</div>
-                    <div class="terminal-output">${linesHtml}${pending}</div>
-                `;
-                break;
-
-            case 'error':
-                const allLinesHtml = this.processOutput.map(line => 
-                    `<div class="terminal-output-line"><span class="branch">├─</span> ${line}</div>`
-                ).join('');
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">yuzu-v2</span> <span class="terminal-branch">master</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span> <span class="terminal-cmd">python main.py</span></div>
-                    <div class="terminal-output">${allLinesHtml}
-                        <div class="terminal-output-line terminal-error"><span class="terminal-error-icon">✗</span> [Errno 2] No such file or directory</div>
-                        <div class="terminal-message">the project is still under construction, please stay tuned</div>
-                    </div>
-                `;
-                break;
-
-            case 'reset':
-                html = `
-                    <div class="terminal-line"><span class="terminal-user">icedeyes12@titit-dev</span> <span class="terminal-path">~</span></div>
-                    <div class="terminal-line"><span class="terminal-prompt">❯</span>${cursor}</div>
-                `;
-                break;
-        }
-
-        this.container.innerHTML = html;
+function runTerminalPhase() {
+    const phase = terminalPhases[currentPhase];
+    const container = document.getElementById('terminalContainer');
+    
+    // Hide all phase elements
+    document.querySelectorAll('.terminal-phase').forEach(el => el.classList.add('hidden'));
+    
+    switch(phase) {
+        case 'cd':
+            document.getElementById('phase-cd').classList.remove('hidden');
+            typedCmd = '';
+            const cdCmd = "cd workspace/yuzu-v2";
+            let cdIndex = 0;
+            terminalInterval = setInterval(() => {
+                if (cdIndex <= cdCmd.length) {
+                    typedCmd = cdCmd.slice(0, cdIndex);
+                    document.getElementById('cdTyped').textContent = typedCmd;
+                    cdIndex++;
+                } else {
+                    clearInterval(terminalInterval);
+                    setTimeout(() => nextPhase(), 600);
+                }
+            }, 120);
+            break;
+            
+        case 'cd-pause':
+            document.getElementById('phase-cd-pause').classList.remove('hidden');
+            setTimeout(() => nextPhase(), 900);
+            break;
+            
+        case 'cd-execute':
+            document.getElementById('phase-cd-execute').classList.remove('hidden');
+            setTimeout(() => nextPhase(), 800);
+            break;
+            
+        case 'python':
+            document.getElementById('phase-python').classList.remove('hidden');
+            typedCmd = '';
+            const pyCmd = "python main.py";
+            let pyIndex = 0;
+            terminalInterval = setInterval(() => {
+                if (pyIndex <= pyCmd.length) {
+                    typedCmd = pyCmd.slice(0, pyIndex);
+                    document.getElementById('pythonTyped').textContent = typedCmd;
+                    pyIndex++;
+                } else {
+                    clearInterval(terminalInterval);
+                    setTimeout(() => nextPhase(), 700);
+                }
+            }, 120);
+            break;
+            
+        case 'python-pause':
+            document.getElementById('phase-python-pause').classList.remove('hidden');
+            setTimeout(() => nextPhase(), 900);
+            break;
+            
+        case 'loading':
+            document.getElementById('phase-loading').classList.remove('hidden');
+            dots = 1;
+            terminalInterval = setInterval(() => {
+                dots = Math.min(dots + 1, 3);
+                document.getElementById('loadingDots').textContent = '.'.repeat(dots) + ' '.repeat(3 - dots);
+            }, 400);
+            setTimeout(() => {
+                clearInterval(terminalInterval);
+                nextPhase();
+            }, 1400);
+            break;
+            
+        case 'processing':
+            document.getElementById('phase-processing').classList.remove('hidden');
+            processLines = [];
+            let lineIndex = 0;
+            terminalInterval = setInterval(() => {
+                if (lineIndex < terminalOutput.length) {
+                    processLines.push(terminalOutput[lineIndex]);
+                    updateProcessLines();
+                    lineIndex++;
+                } else {
+                    clearInterval(terminalInterval);
+                    setTimeout(() => nextPhase(), 600);
+                }
+            }, 180);
+            break;
+            
+        case 'error':
+            document.getElementById('phase-error').classList.remove('hidden');
+            updateErrorLines();
+            setTimeout(() => nextPhase(), 2500);
+            break;
+            
+        case 'reset':
+            document.getElementById('phase-reset').classList.remove('hidden');
+            setTimeout(() => nextPhase(), 1200);
+            break;
     }
-};
+}
+
+function nextPhase() {
+    if (terminalInterval) clearInterval(terminalInterval);
+    currentPhase = (currentPhase + 1) % terminalPhases.length;
+    runTerminalPhase();
+}
+
+function updateProcessLines() {
+    const container = document.getElementById('processLines');
+    container.innerHTML = processLines.map((line, i) => `
+        <div class="text-zinc-500 text-[9px] flex items-center gap-1.5">
+            <span class="text-zinc-600">${i === processLines.length - 1 && processLines.length < terminalOutput.length ? '└─' : '├─'}</span>
+            <span>${line}</span>
+        </div>
+    `).join('');
+    if (processLines.length < terminalOutput.length) {
+        container.innerHTML += '<div class="text-zinc-600 text-[9px]">└─ ...</div>';
+    }
+}
+
+function updateErrorLines() {
+    const container = document.getElementById('errorLines');
+    container.innerHTML = terminalOutput.map((line, i) => `
+        <div class="text-zinc-500 text-[9px] flex items-center gap-1.5">
+            <span class="text-zinc-600">├─</span>
+            <span>${line}</span>
+        </div>
+    `).join('') + `
+        <div class="text-red-400/80 text-[9px] flex items-center gap-1.5 mt-1">
+            <span class="text-red-500/60">✗</span>
+            <span>[Errno 2] No such file or directory</span>
+        </div>
+        <div class="text-orange-400/60 text-[9px] pl-3.5">the project is still under construction, please stay tuned</div>
+    `;
+}
 
 // ====== TAB NAVIGATION ======
-const TabNavigation = {
-    init() {
-        const tabs = document.querySelectorAll('.tab-btn');
-        const panels = document.querySelectorAll('.tab-panel');
+let activeTab = 'story';
+let contentVisible = true;
 
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const targetId = tab.dataset.tab;
-
-                // Update tabs
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                // Update panels with fade transition
-                panels.forEach(panel => {
-                    if (panel.id === targetId) {
-                        panel.classList.add('active');
-                    } else {
-                        panel.classList.remove('active');
-                    }
-                });
-            });
+function switchTab(tab) {
+    if (tab === activeTab) return;
+    
+    contentVisible = false;
+    document.getElementById('tabContent').style.opacity = '0';
+    document.getElementById('tabContent').style.transform = 'translateY(8px)';
+    
+    setTimeout(() => {
+        activeTab = tab;
+        
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.dataset.tab === tab) {
+                btn.classList.add('text-orange-400');
+                btn.classList.remove('text-zinc-500', 'hover:text-zinc-300');
+                btn.querySelector('.tab-bg').classList.remove('hidden');
+            } else {
+                btn.classList.remove('text-orange-400');
+                btn.classList.add('text-zinc-500', 'hover:text-zinc-300');
+                btn.querySelector('.tab-bg').classList.add('hidden');
+            }
         });
-    }
-};
-
-// ====== SCROLL PROGRESS ======
-const ScrollProgress = {
-    init() {
-        const bar = document.querySelector('.scroll-progress-bar');
-        if (!bar) return;
-
-        window.addEventListener('scroll', () => {
-            const scrollTop = window.scrollY;
-            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-            const progress = (scrollTop / docHeight) * 100;
-            bar.style.width = `${progress}%`;
-        }, { passive: true });
-    }
-};
+        
+        // Show/hide content
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.add('hidden');
+        });
+        document.getElementById(`panel-${tab}`).classList.remove('hidden');
+        
+        contentVisible = true;
+        document.getElementById('tabContent').style.opacity = '1';
+        document.getElementById('tabContent').style.transform = 'translateY(0)';
+        
+        // Re-trigger animations for new content
+        initIntersectionObserver();
+    }, 150);
+}
 
 // ====== CONTACT PANEL ======
-const ContactPanel = {
-    init() {
-        const panel = document.getElementById('contact-panel');
-        const toggle = document.getElementById('contact-toggle');
-        if (!panel || !toggle) return;
+let contactExpanded = false;
 
-        toggle.addEventListener('click', () => {
-            panel.classList.toggle('expanded');
-        });
+function toggleContact() {
+    contactExpanded = !contactExpanded;
+    const panel = document.getElementById('contactPanel');
+    const content = document.getElementById('contactContent');
+    const mailIcon = document.getElementById('contactIconMail');
+    const closeIcon = document.getElementById('contactIconClose');
+    
+    if (contactExpanded) {
+        panel.style.width = 'min(360px, calc(100vw - 2rem))';
+        panel.classList.remove('bg-gradient-to-br', 'from-orange-500', 'via-orange-600', 'to-amber-500');
+        panel.classList.add('bg-zinc-900/95', 'backdrop-blur-xl', 'border', 'border-zinc-700');
+        content.classList.remove('opacity-0', 'w-0', 'overflow-hidden');
+        content.classList.add('opacity-100', 'flex-1');
+        mailIcon.classList.add('hidden');
+        closeIcon.classList.remove('hidden');
+        document.getElementById('contactToggle').classList.add('hover:bg-zinc-800', 'text-orange-400', 'rounded-r-2xl');
+        document.getElementById('contactToggle').classList.remove('hover:scale-105', 'active:scale-95', 'text-white');
+    } else {
+        panel.style.width = '56px';
+        panel.classList.add('bg-gradient-to-br', 'from-orange-500', 'via-orange-600', 'to-amber-500');
+        panel.classList.remove('bg-zinc-900/95', 'backdrop-blur-xl', 'border', 'border-zinc-700');
+        content.classList.add('opacity-0', 'w-0', 'overflow-hidden');
+        content.classList.remove('opacity-100', 'flex-1');
+        mailIcon.classList.remove('hidden');
+        closeIcon.classList.add('hidden');
+        document.getElementById('contactToggle').classList.remove('hover:bg-zinc-800', 'text-orange-400', 'rounded-r-2xl');
+        document.getElementById('contactToggle').classList.add('hover:scale-105', 'active:scale-95', 'text-white');
     }
-};
+}
 
-// ====== SCROLL REVEAL ANIMATION ======
-const ScrollReveal = {
-    init() {
-        const reveals = document.querySelectorAll('.timeline-item, .philosophy-card, .skill-card, .project-card');
-        
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach((entry, index) => {
-                if (entry.isIntersecting) {
-                    setTimeout(() => {
-                        entry.target.classList.add('visible');
-                    }, index * 50);
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, {
-            threshold: 0.1,
-            rootMargin: '50px'
+// ====== SCROLL PROGRESS ======
+function initScrollProgress() {
+    const progressBar = document.getElementById('scrollProgress');
+    
+    window.addEventListener('scroll', () => {
+        const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const progress = (window.scrollY / totalHeight) * 100;
+        progressBar.style.width = `${progress}%`;
+    }, { passive: true });
+}
+
+// ====== INTERSECTION OBSERVER FOR REVEALS ======
+function initIntersectionObserver() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
         });
+    }, { threshold: 0.1, rootMargin: '0px' });
+    
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+}
 
-        reveals.forEach(el => {
-            el.classList.add('reveal');
-            observer.observe(el);
-        });
-    }
-};
-
-// ====== AVATAR IMAGE LOADING ======
-const AvatarLoader = {
-    init() {
-        const avatarImg = document.getElementById('avatar-img');
-        if (!avatarImg) return;
-
-        // Try GitHub avatar first, fallback to a generated gradient if it fails
-        avatarImg.onerror = () => {
-            avatarImg.src = 'data:image/svg+xml,' + encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-                    <defs>
-                        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:#f97316"/>
-                            <stop offset="100%" style="stop-color:#fbbf24"/>
-                        </linearGradient>
-                    </defs>
-                    <rect fill="#18181b" width="200" height="200"/>
-                    <circle cx="100" cy="80" r="40" fill="url(#g)"/>
-                    <ellipse cx="100" cy="180" rx="60" ry="50" fill="url(#g)"/>
-                </svg>
-            `);
-        };
-    }
-};
-
-// ====== PRELOAD SKILL ICONS ======
-const PreloadIcons = {
-    init() {
-        const skills = ['python', 'bash', 'fastapi', 'postgres', 'html', 'css'];
-        skills.forEach(skill => {
-            const img = new Image();
-            img.src = `https://skillicons.dev/icons?i=${skill}`;
-        });
-    }
-};
-
-// ====== INITIALIZE ======
-document.addEventListener('DOMContentLoaded', () => {
-    TerminalAnimation.init();
-    TabNavigation.init();
-    ScrollProgress.init();
-    ContactPanel.init();
-    ScrollReveal.init();
-    AvatarLoader.init();
-    PreloadIcons.init();
-});
+// ====== PARALLAX EFFECT ======
+function initParallax() {
+    const heroBg = document.getElementById('heroBg');
+    
+    window.addEventListener('scroll', () => {
+        const scrolled = window.scrollY;
+        const rate = scrolled * 0.3;
+        if (heroBg && scrolled < window.innerHeight) {
+            heroBg.style.transform = `translateY(${rate}px) scale(1.05)`;
+        }
+    }, { passive: true });
+}
